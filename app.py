@@ -155,7 +155,7 @@ def create_multisheet_excel(dataframes_list: List[pd.DataFrame], sheet_names: Li
 
 # --- Main Application ---
 def main():
-    st.set_page_config(layout="wide")
+    st.set_page_config(layout="centered")
     st.title("Informe CEV v2 (PDF scraper)")
 
     # --- Download Button (Conditional) ---
@@ -219,6 +219,14 @@ def main():
         else:
             if st.session_state.last_uploaded_file_id is not None: reset_state()
             if not st.session_state.processing_done: st.info("Por favor, seleccione un archivo PDF.")
+       
+        # --- Links Section ---
+        st.markdown("---"); st.subheader("Recursos Adicionales")
+        st.markdown("""
+        Para más información sobre la Calificación Energética de Viviendas en Chile o para buscar informes, visite:
+        * [Portal Oficial CEV](https://www.calificacionenergetica.cl/)
+        * [Buscador Público de Viviendas Calificadas](https://calificacionenergeticaweb.minvu.cl/Publico/BusquedaVivienda.aspx)
+        """, unsafe_allow_html=True)
 
     # --- Data Tab Content ---
     data_tabs = [tab_p1, tab_p2, tab_p3, tab_p4, tab_p5, tab_p6, tab_p7]
