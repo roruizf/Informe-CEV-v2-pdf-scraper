@@ -139,9 +139,6 @@ cython_debug/
 
 # --- User Specific ---
 
-# Ignore all PDF files anywhere in the repository
-*.pdf
-
 # Ignore specific folders if needed (add your folder names here)
 # example_folder_to_ignore/
 # another_folder/
