@@ -6,12 +6,20 @@ from io import BytesIO
 import logging
 import time
 import re # Import regex for sanitizing sheet names
+import os # Import os to check for sample file existence
 
 # Import using wildcard as requested
 from scraping_functions import *
 
 # Configure logging for the app
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Constants for Examples ---
+REPORT_EXAMPLES_FOLDER = "report_examples"
+SAMPLE_PDF_PRECAL_NAME = "9_8_1_13e7982f-3470-5a8d-ba76-0a04e3ee0b7b.pdf"
+SAMPLE_PDF_CAL_NAME = "10_192_2_b5ffa84b-d3b4-51c6-afa0-bc3eff628bfa.pdf"
+SAMPLE_PDF_PRECAL_PATH = os.path.join(REPORT_EXAMPLES_FOLDER, SAMPLE_PDF_PRECAL_NAME)
+SAMPLE_PDF_CAL_PATH = os.path.join(REPORT_EXAMPLES_FOLDER, SAMPLE_PDF_CAL_NAME)
 
 # --- Renaming Dictionaries ---
 RENAME_MAP_P1 = { "tipo_evaluacion": "Tipo de Evaluación", "codigo_evaluacion": "Código de Evaluación", "region": "Región", "comuna": "Comuna", "direccion": "Dirección", "rol_vivienda_proyecto": "Rol de Vivienda o Proyecto", "tipo_vivienda": "Tipo de Vivienda", "superficie_interior_util_m2": "Superficie Interior Útil (m²)", "porcentaje_ahorro": "Porcentaje de Ahorro (%)", "letra_eficiencia_energetica_dem": "Letra de Eficiencia Energética", "demanda_calefaccion_kwh_m2_ano": "Demanda Calefacción (kWh/m²/año)", "demanda_enfriamiento_kwh_m2_ano": "Demanda Enfriamiento (kWh/m²/año)", "demanda_total_kwh_m2_ano": "Demanda Total (kWh/m²/año)", "emitida_el": "Emitida el" }
@@ -219,6 +227,38 @@ def main():
         else:
             if st.session_state.last_uploaded_file_id is not None: reset_state()
             if not st.session_state.processing_done: st.info("Por favor, seleccione un archivo PDF.")
+        # --- Example File Download ---
+        st.markdown("---"); st.subheader("Archivos de Ejemplo")
+        st.markdown("""
+        Puede descargar ejemplos de archivos PDF para probar la aplicación:
+        
+        """, unsafe_allow_html=True)
+
+
+        col1, col2 = st.columns(2)
+
+        if os.path.exists(SAMPLE_PDF_PRECAL_PATH):
+            with open(SAMPLE_PDF_PRECAL_PATH, "rb") as f:
+                with col1:
+                    st.download_button(
+                        "Descargar Ejemplo Precalificación Energética",
+                        data=f,
+                        type="primary",
+                        file_name=SAMPLE_PDF_PRECAL_NAME,
+                        mime="application/pdf"
+                    )
+
+        if os.path.exists(SAMPLE_PDF_CAL_PATH):
+            with open(SAMPLE_PDF_CAL_PATH, "rb") as f:
+                with col2:
+                    st.download_button(
+                        "Descargar Ejemplo Calificación Energética",
+                        data=f,
+                        type="primary",
+                        file_name=SAMPLE_PDF_CAL_NAME,
+                        mime="application/pdf"
+                    )
+
        
         # --- Links Section ---
         st.markdown("---"); st.subheader("Recursos Adicionales")
