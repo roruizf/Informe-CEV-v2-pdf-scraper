@@ -1,4 +1,3 @@
-# --- app.py (Updated - Fix download button trigger issue) ---
 import streamlit as st
 import fitz # PyMuPDF
 import pandas as pd
@@ -7,22 +6,12 @@ from io import BytesIO
 import logging
 import time
 import re # Import regex for sanitizing sheet names
-import os # Import os to check for sample file existence
 
 # Import using wildcard as requested
-# Make sure scraping_functions.py matches the version the user uploaded
 from scraping_functions import *
 
 # Configure logging for the app
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# --- Constants for Examples ---
-REPORT_EXAMPLES_FOLDER = "report_examples"
-SAMPLE_PDF_PRECAL_NAME = "9_8_1_13e7982f-3470-5a8d-ba76-0a04e3ee0b7b.pdf"
-SAMPLE_PDF_CAL_NAME = "10_192_2_b5ffa84b-d3b4-51c6-afa0-bc3eff628bfa.pdf"
-SAMPLE_PDF_PRECAL_PATH = os.path.join(REPORT_EXAMPLES_FOLDER, SAMPLE_PDF_PRECAL_NAME)
-SAMPLE_PDF_CAL_PATH = os.path.join(REPORT_EXAMPLES_FOLDER, SAMPLE_PDF_CAL_NAME)
-
 
 # --- Renaming Dictionaries ---
 RENAME_MAP_P1 = { "tipo_evaluacion": "Tipo de Evaluación", "codigo_evaluacion": "Código de Evaluación", "region": "Región", "comuna": "Comuna", "direccion": "Dirección", "rol_vivienda_proyecto": "Rol de Vivienda o Proyecto", "tipo_vivienda": "Tipo de Vivienda", "superficie_interior_util_m2": "Superficie Interior Útil (m²)", "porcentaje_ahorro": "Porcentaje de Ahorro (%)", "letra_eficiencia_energetica_dem": "Letra de Eficiencia Energética", "demanda_calefaccion_kwh_m2_ano": "Demanda Calefacción (kWh/m²/año)", "demanda_enfriamiento_kwh_m2_ano": "Demanda Enfriamiento (kWh/m²/año)", "demanda_total_kwh_m2_ano": "Demanda Total (kWh/m²/año)", "emitida_el": "Emitida el" }
@@ -48,7 +37,7 @@ if 'last_uploaded_file_id' not in st.session_state: st.session_state.last_upload
 
 # --- Validation Function ---
 def is_valid_cev_v2_pdf(pdf_doc: fitz.Document) -> bool:
-    if not pdf_doc or len(pdf_doc) < 7: return False
+    if not pdf_doc or len(pdf_doc) != 7: return False
     try:
         text_upper = pdf_doc[0].get_text("text").upper()
         valid = "PRECALIFICACIÓN ENERGÉTICA" in text_upper or "CALIFICACIÓN ENERGÉTICA" in text_upper
@@ -61,8 +50,12 @@ def is_valid_cev_v2_pdf(pdf_doc: fitz.Document) -> bool:
 
 # --- Display Functions ---
 def display_dataframe_with_title(title: str, data: pd.DataFrame, transpose: bool = False, rename_map: Optional[Dict[str, str]] = None):
+    """Displays a dataframe with title, optional rename, optional transpose."""
     st.header(title)
-    if data is None or data.empty: st.warning(f"No data available for this section."); return
+    if data is None or data.empty:
+        st.warning(f"No data available for this section.")
+        return
+
     data_to_display = data.copy()
     if rename_map:
         cols_to_rename = {k: v for k, v in rename_map.items() if k in data_to_display.columns}
@@ -81,100 +74,84 @@ def display_dataframe_with_title(title: str, data: pd.DataFrame, transpose: bool
                   st.dataframe(display_data, column_config=dynamic_column_config)
          return
 
-    if transpose: display_data = data_to_display.T; display_data.columns = [""]
-    else: display_data = data_to_display
+    if transpose:
+        display_data = data_to_display.T; display_data.columns = [""]
+    else:
+        display_data = data_to_display
+
     dynamic_column_config = {col: st.column_config.Column(width=None) for col in display_data.columns}
     st.dataframe(display_data, column_config=dynamic_column_config)
 
 
-# --- PDF Processing (Accepts container for progress) ---
-def process_pdf(pdf_document: fitz.Document, filename: str, progress_container) -> Tuple[List[pd.DataFrame], List[str]]:
+# --- PDF Processing ---
+def process_pdf(pdf_document: fitz.Document, filename: str) -> Tuple[List[pd.DataFrame], List[str]]:
+    # ... (processing logic remains the same) ...
     extracted_data_frames: List[pd.DataFrame] = []
     base_names: List[str] = []
     processing_steps = [
-        (get_informe_cev_v2_pagina1_as_dataframe, "Página 1"), (get_informe_cev_v2_pagina2_as_dataframe, "Página 2"),
-        (get_informe_cev_v2_pagina3_consumos_as_dataframe, "Página 3 - Consumos"), (get_informe_cev_v2_pagina3_envolvente_as_dataframe, "Página 3 - Envolvente"),
-        (get_informe_cev_v2_pagina4_as_dataframe, "Página 4"), (get_informe_cev_v2_pagina5_as_dataframe, "Página 5"),
-        (get_informe_cev_v2_pagina6_as_dataframe, "Página 6"), (get_informe_cev_v2_pagina7_as_dataframe, "Página 7"),
+        (get_informe_cev_v2_pagina1_as_dataframe, "Página 1"),
+        (get_informe_cev_v2_pagina2_as_dataframe, "Página 2"),
+        (get_informe_cev_v2_pagina3_consumos_as_dataframe, "Página 3 - Consumos"),
+        (get_informe_cev_v2_pagina3_envolvente_as_dataframe, "Página 3 - Envolvente"),
+        (get_informe_cev_v2_pagina4_as_dataframe, "Página 4"),
+        (get_informe_cev_v2_pagina5_as_dataframe, "Página 5"),
+        (get_informe_cev_v2_pagina6_as_dataframe, "Página 6"),
+        (get_informe_cev_v2_pagina7_as_dataframe, "Página 7"),
     ]
+    progress_container = st.container()
     progress_bar = progress_container.progress(0)
     status_text = progress_container.empty()
     total_steps = len(processing_steps)
-    all_successful = True
     for i, (func, base_name) in enumerate(processing_steps):
         status_text.text(f"Procesando: {base_name}...")
-        try:
-            df = func(pdf_document)
-            extracted_data_frames.append(df); base_names.append(base_name)
-            if df.empty: logging.warning(f"Processed {base_name} but resulting DataFrame is empty.")
-            else: logging.info(f"Processed {base_name}")
-        except Exception as e:
-            logging.error(f"Error processing {base_name}: {e}", exc_info=True)
-            progress_container.warning(f"Error al extraer datos de '{base_name}'.")
-            extracted_data_frames.append(pd.DataFrame()); base_names.append(base_name)
-            all_successful = False
+        try: df = func(pdf_document); extracted_data_frames.append(df); base_names.append(base_name); logging.info(f"Processed {base_name}")
+        except Exception as e: logging.error(f"Error processing {base_name}: {e}", exc_info=True); progress_container.warning(f"Error extracting '{base_name}'."); extracted_data_frames.append(pd.DataFrame()); base_names.append(base_name)
         progress_bar.progress((i + 1) / total_steps)
-
-    if all_successful: status_text.success("Procesamiento completado."); time.sleep(2)
-    else: status_text.warning("Procesamiento completado con errores."); time.sleep(3)
-    status_text.empty()
+    status_text.success("Procesamiento completado.")
     return extracted_data_frames, base_names
 
 # --- Function to reset state ---
 def reset_state():
-    st.session_state.uploaded_file_bytes = None; st.session_state.extracted_data = None
-    st.session_state.processing_done = False; st.session_state.file_name = None
-    st.session_state.last_uploaded_file_id = None # Reset this too
+    st.session_state.uploaded_file_bytes = None
+    st.session_state.extracted_data = None
+    st.session_state.processing_done = False
+    st.session_state.file_name = None
+    st.session_state.last_uploaded_file_id = None
 
 # --- Function to create Excel File ---
 def create_multisheet_excel(dataframes_list: List[pd.DataFrame], sheet_names: List[str], rename_maps: List[Optional[Dict[str, str]]]) -> BytesIO:
-    # ... (function remains the same) ...
+    """Creates a multi-sheet Excel file from a list of dataframes."""
     excel_buffer = BytesIO()
     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-        if len(dataframes_list) != len(sheet_names) or len(dataframes_list) != len(rename_maps): logging.error("Mismatch for Excel generation."); return excel_buffer
+        if len(dataframes_list) != len(sheet_names) or len(dataframes_list) != len(rename_maps):
+             logging.error("Mismatch between dataframes, sheet names, or rename maps for Excel generation.")
+             # Write an error sheet? Or just return empty buffer? For now, return empty.
+             return excel_buffer # Consider adding an error sheet
+
         for i, df_original in enumerate(dataframes_list):
-            if df_original is None or df_original.empty: logging.info(f"Skipping empty df for sheet '{sheet_names[i]}'"); continue
+            if df_original is None or df_original.empty:
+                logging.info(f"Skipping empty dataframe for sheet '{sheet_names[i]}'")
+                continue # Skip empty dataframes
+
             df_to_write = df_original.copy()
-            if 'content_note' in df_to_write.columns: df_to_write = df_to_write.drop(columns=['content_note'], errors='ignore')
             rename_map = rename_maps[i]
+
+            # Apply renaming if map exists
             if rename_map:
-                current_rename_map = {k:v for k,v in rename_map.items() if k != 'content_note'}; cols_to_rename = {k: v for k, v in current_rename_map.items() if k in df_to_write.columns}
+                cols_to_rename = {k: v for k, v in rename_map.items() if k in df_to_write.columns}
                 df_to_write = df_to_write.rename(columns=cols_to_rename)
+
+            # Sanitize sheet name (max 31 chars, no invalid chars like / ? * [ ] :)
             safe_sheet_name = re.sub(r'[\\/*?:\[\]]', '_', sheet_names[i])[:31]
-            try: df_to_write.to_excel(writer, sheet_name=safe_sheet_name, index=False)
-            except Exception as e: logging.error(f"Error writing sheet '{safe_sheet_name}': {e}", exc_info=True)
+
+            try:
+                df_to_write.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+            except Exception as e:
+                 logging.error(f"Error writing sheet '{safe_sheet_name}': {e}", exc_info=True)
+                 # Optionally write a placeholder sheet indicating error
+
     excel_buffer.seek(0)
     return excel_buffer
-
-# --- Helper Function to Trigger Processing ---
-def trigger_processing(file_bytes, filename, placeholder):
-    """Stores file details and runs the processing pipeline."""
-    # Set state for the file being processed
-    st.session_state.uploaded_file_bytes = file_bytes
-    st.session_state.file_name = filename
-    st.session_state.last_uploaded_file_id = f"{filename}_{time.time()}"
-    st.session_state.processing_done = False # Mark as not done before starting
-    st.session_state.extracted_data = None   # Clear previous data
-
-    try:
-        with fitz.open(stream=file_bytes, filetype="pdf") as pdf_doc:
-            placeholder.info("Validando archivo...")
-            time.sleep(0.5)
-            if not is_valid_cev_v2_pdf(pdf_doc):
-                st.error(f"Archivo '{filename}' inválido o no soportado.")
-                reset_state(); placeholder.empty()
-                return # Stop processing
-            else:
-                placeholder.info(f"Archivo válido. Procesando '{filename}'...")
-                extracted_dfs, base_names = process_pdf(pdf_doc, filename, placeholder)
-                st.session_state.extracted_data = extracted_dfs
-                st.session_state.processing_done = True # Mark as done only on success/partial success
-                # Message handled inside process_pdf
-    except Exception as e:
-        error_message=str(e).lower(); user_msg=f"Error inesperado procesando {filename}: {e}"
-        if any(err in error_message for err in ["cannot open", "damaged", "format error", "no objects found"]): user_msg=f"Error al leer PDF {filename}. Podría estar dañado/protegido."
-        log_msg=f"Error processing file {filename}: {e}"; logging.error(log_msg, exc_info=True); st.error(user_msg); reset_state(); placeholder.empty()
-
 
 # --- Main Application ---
 def main():
@@ -183,12 +160,29 @@ def main():
 
     # --- Download Button (Conditional) ---
     if st.session_state.processing_done and st.session_state.extracted_data:
-        excel_sheet_names = ["Pagina1", "Pagina2", "Pagina3_Consumos", "Pagina3_Envolvente", "Pagina4", "Pagina5", "Pagina6", "Pagina7"]
+        excel_sheet_names = [
+            "Pagina1", "Pagina2", "Pagina3_Consumos", "Pagina3_Envolvente",
+            "Pagina4", "Pagina5", "Pagina6", "Pagina7"
+        ]
+        # Ensure we have the correct number of rename maps
         if len(ALL_RENAME_MAPS) == len(st.session_state.extracted_data):
-             excel_data = create_multisheet_excel(st.session_state.extracted_data, excel_sheet_names, ALL_RENAME_MAPS)
+             excel_data = create_multisheet_excel(
+                 st.session_state.extracted_data,
+                 excel_sheet_names,
+                 ALL_RENAME_MAPS
+             )
              download_filename = f"{st.session_state.file_name.replace('.pdf', '')}_Extracted_Data.xlsx" if st.session_state.file_name else "Extracted_Data.xlsx"
-             st.download_button(label="Descargar Informe CEV (Excel)", data=excel_data, file_name=download_filename, mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', key="download_excel_all")
-        else: st.warning("No se pudo preparar el archivo Excel (error interno de mapeo).")
+
+             st.download_button(
+                 label="Descargar Informe CEV (Excel)",
+                 data=excel_data,
+                 file_name=download_filename,
+                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                 key="download_excel_all"
+             )
+        else:
+            st.warning("No se pudo preparar el archivo Excel (error interno de mapeo).")
+
 
     # --- Define Tabs ---
     tab_titles = ["Subir Archivo PDF", "Página 1", "Página 2", "Página 3", "Página 4", "Página 5", "Página 6", "Página 7"]
@@ -197,78 +191,35 @@ def main():
     # --- Upload Tab Content ---
     with tab_upload:
         st.header("Cargar Archivo PDF")
-        st.info("Cargue un archivo PDF en formato 'Informe CEV v2' o pruebe con uno de los ejemplos.")
+        uploaded_file_widget = st.file_uploader("Seleccione un archivo PDF (informe_cev_v2)", accept_multiple_files=False, type="pdf", key="pdf_uploader", help="Suba un archivo PDF en formato 'Informe CEV v2'.")
 
-        # --- File Uploader ---
-        uploaded_file_widget = st.file_uploader("Seleccione su archivo PDF", accept_multiple_files=False, type="pdf", key="pdf_uploader", help="Suba un archivo PDF en formato 'Informe CEV v2'.")
-
-        # --- Processing Placeholder ---
-        # Define the placeholder HERE, before examples and processing logic
-        processing_placeholder = st.empty()
-
-        # --- Trigger processing for USER UPLOAD ---
         if uploaded_file_widget is not None:
             current_file_id = uploaded_file_widget.file_id
-            # Check if it's a genuinely new file upload compared to the last processed ID
             if current_file_id != st.session_state.last_uploaded_file_id:
-                 trigger_processing(uploaded_file_widget.getvalue(), uploaded_file_widget.name, processing_placeholder)
-                 # No rerun here, let state change handle it
-
-        st.markdown("---")
-        st.subheader("O prueba con un ejemplo:")
-
-        # --- Examples Section ---
-        col1, col2 = st.columns(2)
-
-        # Pre-read sample bytes for download buttons to avoid re-reading on every run
-        sample1_bytes = None
-        sample2_bytes = None
-        try:
-            if os.path.exists(SAMPLE_PDF_PRECAL_PATH):
-                with open(SAMPLE_PDF_PRECAL_PATH, "rb") as f:
-                    sample1_bytes = f.read()
-        except Exception as e:
-            logging.error(f"Failed to pre-read sample 1: {e}")
-        try:
-            if os.path.exists(SAMPLE_PDF_CAL_PATH):
-                with open(SAMPLE_PDF_CAL_PATH, "rb") as f:
-                    sample2_bytes = f.read()
-        except Exception as e:
-            logging.error(f"Failed to pre-read sample 2: {e}")
-
-        # Example 1: Precalificación
-        with col1:
-            st.markdown("**Ejemplo Precalificación**")
-            if sample1_bytes: # Only show buttons if file was successfully read
-                if st.button("Cargar Ejemplo Precalificación", type="primary", key="load_precal", help=f"Procesa el archivo {SAMPLE_PDF_PRECAL_NAME}"):
-                    trigger_processing(sample1_bytes, SAMPLE_PDF_PRECAL_NAME, processing_placeholder)
-                st.download_button(label="Descargar PDF Ejemplo (Precal.)", data=sample1_bytes, file_name=SAMPLE_PDF_PRECAL_NAME, mime="application/pdf", key="download_precal")
-            else:
-                st.caption(f"Archivo '{SAMPLE_PDF_PRECAL_NAME}' no encontrado en '{REPORT_EXAMPLES_FOLDER}/'.")
-
-        # Example 2: Calificación
-        with col2:
-            st.markdown("**Ejemplo Calificación**")
-            if sample2_bytes: # Only show buttons if file was successfully read
-                if st.button("Cargar Ejemplo Calificación", type="primary", key="load_cal", help=f"Procesa el archivo {SAMPLE_PDF_CAL_NAME}"):
-                    trigger_processing(sample2_bytes, SAMPLE_PDF_CAL_NAME, processing_placeholder)
-                st.download_button(label="Descargar PDF Ejemplo (Calif.)", data=sample2_bytes, file_name=SAMPLE_PDF_CAL_NAME, mime="application/pdf", key="download_cal")
-            else:
-                 st.caption(f"Archivo '{SAMPLE_PDF_CAL_NAME}' no encontrado en '{REPORT_EXAMPLES_FOLDER}/'.")
-
-        # Display final status message AFTER buttons and upload logic
-        # This message shows the state AFTER the current run's actions
-        st.markdown("---") # Separator before final status/prompt
-        if st.session_state.processing_done and st.session_state.file_name:
-            processing_placeholder.success(f"Resultados listos para '{st.session_state.file_name}'.")
-        elif st.session_state.file_name and not st.session_state.processing_done:
-             # Error message was already shown by trigger_processing
-             pass # Avoid showing redundant warnings here
-        elif not st.session_state.file_name:
-             processing_placeholder.empty() # Clear placeholder if no file selected/processed
-             st.info("Por favor, seleccione un archivo PDF o cargue un ejemplo.")
-
-
+                st.info(f"Nuevo archivo detectado: '{uploaded_file_widget.name}'. Procesando...")
+                st.session_state.uploaded_file_bytes = uploaded_file_widget.getvalue(); st.session_state.file_name = uploaded_file_widget.name; st.session_state.last_uploaded_file_id = current_file_id; st.session_state.processing_done = False; st.session_state.extracted_data = None
+                processing_placeholder = st.empty()
+                try:
+                    with fitz.open(stream=st.session_state.uploaded_file_bytes, filetype="pdf") as pdf_doc:
+                        processing_placeholder.info("Validando archivo...")
+                        if not is_valid_cev_v2_pdf(pdf_doc):
+                            st.error(f"Archivo '{st.session_state.file_name}' inválido o no soportado."); reset_state(); processing_placeholder.empty()
+                        else:
+                            processing_placeholder.info(f"Archivo válido. Procesando '{st.session_state.file_name}'...")
+                            extracted_dfs, base_names = process_pdf(pdf_doc, st.session_state.file_name)
+                            st.session_state.extracted_data = extracted_dfs; st.session_state.processing_done = True; processing_placeholder.empty(); st.success(f"Procesamiento de '{st.session_state.file_name}' completado.")
+                            # Use st.rerun() to refresh the interface cleanly after processing
+                            st.rerun()
+                except Exception as e:
+                    error_message=str(e).lower(); user_msg=f"Error inesperado procesando {st.session_state.file_name}: {e}"
+                    if any(err in error_message for err in ["cannot open", "damaged", "format error", "no objects found"]): user_msg=f"Error al leer PDF {st.session_state.file_name}. Podría estar dañado/protegido."
+                    log_msg=f"Error processing file {st.session_state.file_name}: {e}"; logging.error(log_msg, exc_info=True); st.error(user_msg); reset_state(); processing_placeholder.empty()
+            elif st.session_state.processing_done: st.success(f"Archivo '{st.session_state.file_name}' procesado correctamente.")
+            elif st.session_state.file_name: st.warning(f"Archivo '{st.session_state.file_name}' cargado, pero hubo error.")
+        else:
+            if st.session_state.last_uploaded_file_id is not None: reset_state()
+            if not st.session_state.processing_done: st.info("Por favor, seleccione un archivo PDF.")
+       
         # --- Links Section ---
         st.markdown("---"); st.subheader("Recursos Adicionales")
         st.markdown("""
@@ -279,15 +230,16 @@ def main():
 
     # --- Data Tab Content ---
     data_tabs = [tab_p1, tab_p2, tab_p3, tab_p4, tab_p5, tab_p6, tab_p7]
+    # Structure: Tab Index -> (Title | [(Title, DF Index, Transpose Flag, Rename Map), ...], DF Index, Transpose Flag, Rename Map)
     data_structure = {
-         0: ("Información General", 0, True, RENAME_MAP_P1),
-         1: ("Información Gral. / Demanda / Diseño Arq.", 1, True, RENAME_MAP_P2),
-         2: [("Consumo Energético Estimado", 2, True, RENAME_MAP_P3_CONSUMOS),
-             ("Resumen Envolvente", 3, False, RENAME_MAP_P3_ENVOLVENTE)],
-         3: ("Demanda / Sobrecalentamiento / Sobreenfriamiento Mensual", 4, False, RENAME_MAP_P4),
-         4: ("Página 5 (Gráficos)", 5, True, RENAME_MAP_P5_P6),
-         5: ("Página 6 (Gráficos)", 6, True, RENAME_MAP_P5_P6),
-         6: ("Antecedentes de la Evaluación", 7, True, RENAME_MAP_P7)
+         0: ("Información General", 0, True, RENAME_MAP_P1),                      # P1
+         1: ("Información Gral. / Demanda energética / Diseño de Arquitectura", 1, True, RENAME_MAP_P2),                     # P2
+         2: [("Consumo energético estimado ARQUITECTURA + EQUIPOS + TIPO DE ENERGÍA", 2, True, RENAME_MAP_P3_CONSUMOS),             # P3 (Part 1)
+             ("Resumen Envolvente", 3, False, RENAME_MAP_P3_ENVOLVENTE)],       # P3 (Part 2)
+         3: ("Demanda, sobrecalentamiento y sobreenfriamiento mensual", 4, False, RENAME_MAP_P4),              # P4
+         4: ("Página 5 (No disponible)", 5, True, RENAME_MAP_P5_P6),                # P5 (Placeholder) - Transpose=True
+         5: ("Página 6 (No disponible)", 6, True, RENAME_MAP_P5_P6),                # P6 (Placeholder) - Transpose=True
+         6: ("Antecedentes de la evaluación", 7, True, RENAME_MAP_P7)                      # P7
     }
 
     for i, tab in enumerate(data_tabs):
@@ -302,10 +254,11 @@ def main():
                     display_dataframe_with_title(part2[0], st.session_state.extracted_data[part2[1]], transpose=part2[2], rename_map=part2[3])
                 else: # Handle single page tabs
                     title, df_index, transpose_flag, rename_map_dict = structure_info
+                    # Check if rename_map_dict is None before passing, although it shouldn't be based on data_structure
                     current_rename_map = rename_map_dict if rename_map_dict else None
                     display_dataframe_with_title(title, st.session_state.extracted_data[df_index], transpose=transpose_flag, rename_map=current_rename_map)
             else:
-                 st.info("Suba o cargue un archivo PDF válido en la pestaña 'Subir Archivo PDF' para ver los datos.")
+                 st.info("Suba un archivo PDF válido en la pestaña 'Subir Archivo PDF' para ver los datos.")
 
 if __name__ == "__main__":
     main()
