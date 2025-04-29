@@ -164,7 +164,7 @@ def create_multisheet_excel(dataframes_list: List[pd.DataFrame], sheet_names: Li
 # --- Main Application ---
 def main():
     st.set_page_config(layout="centered")
-    st.title("Informe CEV v2 (PDF scraper)")
+    st.title("Extractor de Datos Informe CEV v2")
 
     # --- Download Button (Conditional) ---
     if st.session_state.processing_done and st.session_state.extracted_data:

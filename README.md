@@ -1,4 +1,4 @@
-# Informe CEV v2 (PDF scraper)
+# Extractor de Datos Informe CEV v2
 
 Esta es una aplicación web simple construida con Streamlit que permite a los usuarios cargar archivos PDF correspondientes al formato "Informe de Calificación Energética de Vivienda v2" (CEV v2), extraer datos específicos de diferentes páginas y visualizarlos en un formato tabular. Además, permite descargar toda la información extraída en un archivo Excel.
 
@@ -12,8 +12,6 @@ La aplicación utiliza la biblioteca `PyMuPDF (fitz)` para leer y extraer texto 
 * **Validación de Archivos:** Realiza una verificación básica para asegurar que el PDF cargado corresponde al formato esperado.
 * **Extracción de Datos:** Extrae datos estructurados de las páginas 1, 2, 3 (Consumos y Envolvente), 4 y 7 del informe. Las páginas 5 y 6 se incluyen como marcadores de posición.
 * **Visualización Web:** Muestra los datos extraídos en tablas interactivas dentro de pestañas organizadas por página.
-* **Transposición:** Presenta los datos de ciertas páginas (P1, P2, P3 Consumos, P5, P6, P7) transpuestos para facilitar la lectura.
-* **Renombrado:** Utiliza nombres descriptivos en español para las filas/columnas de las tablas mostradas.
 * **Descarga en Excel:** Permite descargar toda la información extraída (en formato original, no transpuesto y con nombres descriptivos) en un único archivo Excel (`.xlsx`) con múltiples hojas.
 
 ## Requisitos
