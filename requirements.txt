@@ -3,5 +3,5 @@ pandas
 PyMuPDF
 openpyxl
 pytesseract
-opencv-python   
+opencv-python-headless>=4.7.0.68
 numpy
