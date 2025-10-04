@@ -2,3 +2,6 @@ streamlit
 pandas
 PyMuPDF
 openpyxl
+pytesseract
+opencv-python   
+numpy
