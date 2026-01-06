@@ -329,18 +329,18 @@ def draw_extraction_rectangles(pdf_report: fitz.Document, page_num: int, coordin
                 logging.error(f"Error drawing rectangle for {field_name}: {e}")
                 continue
 
-        print(f"Page {page_num + 1}: Successfully drew {rectangles_drawn} rectangles out of {len(coordinates)} defined coordinates.")
+        logging.info(f"Page {page_num + 1}: Successfully drew {rectangles_drawn} rectangles out of {len(coordinates)} defined coordinates.")
 
         # Guardar si se especifica una ruta
         if output_path:
             pdf_report.save(output_path)
-            print(f"PDF con rectángulos guardado en: {output_path}")
+            logging.info(f"PDF con rectángulos guardado en: {output_path}")
 
         return pdf_report
 
     except Exception as e:
         logging.error(f"Error drawing rectangles on page {page_num + 1}: {e}")
-        print(f"Error drawing rectangles on page {page_num + 1}: {e}")
+        logging.error(f"Error drawing rectangles on page {page_num + 1}: {e}")
         return pdf_report
 
 
@@ -369,20 +369,20 @@ def draw_all_pages_rectangles(pdf_report: fitz.Document, output_path: str = None
                 draw_extraction_rectangles(pdf_report, page_num, coordinates)
                 total_rectangles += len(coordinates)
             else:
-                print(f"No coordinates defined for page {page_num + 1}")
+                logging.warning(f"No coordinates defined for page {page_num + 1}")
 
-        print(f"Total rectangles drawn across all pages: {total_rectangles}")
+        logging.info(f"Total rectangles drawn across all pages: {total_rectangles}")
 
         # Guardar si se especifica una ruta
         if output_path:
             pdf_report.save(output_path)
-            print(f"PDF completo con rectángulos guardado en: {output_path}")
+            logging.info(f"PDF completo con rectángulos guardado en: {output_path}")
 
         return pdf_report
 
     except Exception as e:
         logging.error(f"Error drawing rectangles on all pages: {e}")
-        print(f"Error drawing rectangles on all pages: {e}")
+        logging.error(f"Error drawing rectangles on all pages: {e}")
         return pdf_report
 
 
@@ -482,20 +482,7 @@ def _get_text_from_image_area(page: fitz.Page, crop_box: fitz.Rect) -> str:
         logging.error(f"Error durante el OCR en la página {page.number}: {e}")
         return ""
 
-# def _get_text_from_image_area(page: fitz.Page, crop_box: fitz.Rect) -> str:
-#     """
-#     Extrae texto de un área específica usando OCR.
-#     """
-#     try:
-#         pix = page.get_pixmap(dpi=300, clip=crop_box)
-#         img_data = pix.tobytes("png")
-#         image = Image.open(io.BytesIO(img_data))
-#         custom_config = r'--oem 3 --psm 6'
-#         text = pytesseract.image_to_string(image, config=custom_config)
-#         return text
-#     except Exception as e:
-#         logging.error(f"Error durante el OCR en la página {page.number}: {e}")
-#         return ""
+
 
 
 def _parse_hourly_temps_from_text_to_dict(raw_text: str, month_name: str) -> Dict[str, List[float]]:
@@ -558,12 +545,22 @@ def safe_float_convert(text: Optional[str], default: Any = None) -> Union[float,
     """Safely converts a string to a float, handling potential errors and None input."""
     if text is None or text == '':
         return default
-    try:
-        cleaned_text = text.replace('.', '').replace(',', '.').strip()
-        return float(cleaned_text)
-    except (ValueError, TypeError):
-        logging.warning(f"Could not convert '{text}' to float.")
+
+    # Handle multi-line text by splitting and processing each line
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
         return default
+
+    for line in lines:
+        try:
+            # Remove decimals (thousands separator in Spanish) and replace comma with dot
+            cleaned_text = line.replace('.', '').replace(',', '.').strip()
+            return float(cleaned_text)
+        except (ValueError, TypeError):
+            continue
+
+    logging.warning(f"Could not convert '{text}' to float.")
+    return default
 
 
 def _from_procentaje_ahorro_to_letra(porcentaje_ahorro_decimal: Optional[float]) -> Optional[str]:
@@ -603,7 +600,7 @@ def separar_string(texto):
     return [elem.strip() for elem in elementos if elem.strip()]
 
 
-def extraer_numeros(texto):
+def extraer_numeros_de_texto(texto):
     """
     Extrae todos los números (enteros y decimales) de un string
     """
@@ -650,21 +647,21 @@ def procesar_lista_completa(lista_strings):
             # Si tiene éxito, crear string sin espacios y sin puntos
             resultado = sin_espacios.replace('.', '')
             lista_procesada.append(resultado)
-            print(f"✓ '{elemento}' -> '{resultado}'")
+            logging.debug(f"✓ '{elemento}' -> '{resultado}'")
 
         except ValueError:
             # Si falla, extraer números individuales
-            numeros_extraidos = extraer_numeros(elemento)
+            numeros_extraidos = extraer_numeros_de_elemento(elemento)
 
             if numeros_extraidos:
-                print(
+                logging.debug(
                     f"✗ '{elemento}' -> Extrayendo números: {numeros_extraidos}")
                 # Agregar cada número como elemento separado
                 for numero in numeros_extraidos:
                     lista_procesada.append(numero)
             else:
                 # Si no se encuentran números, ELIMINAR
-                print(f"🗑️ '{elemento}' -> Sin números válidos, ELIMINADO")
+                logging.debug(f"🗑️ '{elemento}' -> Sin números válidos, ELIMINADO")
 
     return lista_procesada
 
@@ -680,7 +677,7 @@ def manejar_numeros_con_espacios(elemento):
 
     if len(numeros) < 2:
         # Si hay menos de 2 números, usar lógica normal
-        return extraer_numeros(elemento)
+        return extraer_numeros_de_elemento(elemento)
 
     # Verificar cantidad de dígitos en cada número
     digitos_por_numero = []
@@ -696,24 +693,24 @@ def manejar_numeros_con_espacios(elemento):
             continue
 
     if len(numeros_sin_punto) < 2:
-        return extraer_numeros(elemento)
+        return extraer_numeros_de_elemento(elemento)
 
     # Aplicar regla: todos deben tener >= 2 dígitos para separar
     todos_tienen_2_o_mas = all(digitos >= 2 for digitos in digitos_por_numero)
 
     if todos_tienen_2_o_mas:
         # Separar números
-        print(
+        logging.debug(
             f"🔄 '{elemento}' -> Separando (todos >= 2 dígitos): {numeros_sin_punto}")
         return numeros_sin_punto
     else:
         # Unir números (remover espacios)
         numero_unido = ''.join(numeros_sin_punto)
-        print(f"🔗 '{elemento}' -> Uniendo (alguno < 2 dígitos): '{numero_unido}'")
+        logging.debug(f"🔗 '{elemento}' -> Uniendo (alguno < 2 dígitos): '{numero_unido}'")
         return [numero_unido]
 
 
-def extraer_numeros(elemento):
+def extraer_numeros_de_elemento(elemento):
     """
     Extrae números individuales de un elemento (función auxiliar)
     """
@@ -745,10 +742,10 @@ def convertir_y_dividir(lista_digitos):
             # Dividir por 10
             resultado = numero_float / 10
             lista_final.append(resultado)
-            print(f"'{elemento}' -> {numero_float} -> {resultado}")
+            logging.debug(f"'{elemento}' -> {numero_float} -> {resultado}")
 
         except ValueError:
-            print(f"⚠️ Error: '{elemento}' no se pudo convertir a float")
+            logging.warning(f"⚠️ Error: '{elemento}' no se pudo convertir a float")
             # Opcional: agregar None o saltar el elemento
             # lista_final.append(None)  # Si quieres mantener la posición
 
@@ -1659,69 +1656,69 @@ def demo_scraping_workflow_with_contours(pdf_path: str) -> None:
         # pdf_path = "informe_cev_v2.pdf"
         pdf_doc = fitz.open(pdf_path)
 
-        print("=== EXTRACCIÓN DE DATOS ===")
+        logging.info("=== EXTRACCIÓN DE DATOS ===")
 
         # Extraer datos de cada página
-        print("Extrayendo datos de página 1...")
+        logging.info("Extrayendo datos de página 1...")
         page1_data = get_informe_cev_v2_pagina1_as_dict(pdf_doc)
         page1_df = get_informe_cev_v2_pagina1_as_dataframe(pdf_doc)
 
-        print("Extrayendo datos de página 2...")
+        logging.info("Extrayendo datos de página 2...")
         page2_data = get_informe_cev_v2_pagina2_as_dict(pdf_doc)
         page2_df = get_informe_cev_v2_pagina2_as_dataframe(pdf_doc)
 
-        print("Extrayendo datos de página 3 (consumos)...")
+        logging.info("Extrayendo datos de página 3 (consumos)...")
         page3_consumos_data = get_informe_cev_v2_pagina3_consumos_as_dict(
             pdf_doc)
         page3_consumos_df = get_informe_cev_v2_pagina3_consumos_as_dataframe(
             pdf_doc)
 
-        print("Extrayendo datos de página 3 (envolvente)...")
+        logging.info("Extrayendo datos de página 3 (envolvente)...")
         page3_envolvente_data = get_informe_cev_v2_pagina3_envolvente_as_dict(
             pdf_doc)
         page3_envolvente_df = get_informe_cev_v2_pagina3_envolvente_as_dataframe(
             pdf_doc)
 
-        print("Extrayendo datos de página 4...")
+        logging.info("Extrayendo datos de página 4...")
         page4_data = get_informe_cev_v2_pagina4_as_dict(pdf_doc)
         page4_df = get_informe_cev_v2_pagina4_as_dataframe(pdf_doc)
 
-        print("Extrayendo datos de página 5...")
+        logging.info("Extrayendo datos de página 5...")
         page5_data = get_informe_cev_v2_pagina5_as_dict(pdf_doc)
         page5_df = get_informe_cev_v2_pagina5_as_dataframe(pdf_doc)
 
-        print("Extrayendo datos de página 6...")
+        logging.info("Extrayendo datos de página 6...")
         page6_data = get_informe_cev_v2_pagina6_as_dict(pdf_doc)
         page6_df = get_informe_cev_v2_pagina6_as_dataframe(pdf_doc)
 
-        print("Extrayendo datos de página 7...")
+        logging.info("Extrayendo datos de página 7...")
         page7_data = get_informe_cev_v2_pagina7_as_dict(pdf_doc)
         page7_df = get_informe_cev_v2_pagina7_as_dataframe(pdf_doc)
 
-        print("\n=== VISUALIZACIÓN DE RECTÁNGULOS ===")
+        logging.info("\n=== VISUALIZACIÓN DE RECTÁNGULOS ===")
 
         # Dibujar rectángulos en todas las páginas
-        print("Dibujando rectángulos en todas las páginas...")
+        logging.info("Dibujando rectángulos en todas las páginas...")
         draw_all_pages_rectangles(
             pdf_doc, "informe_completo_con_rectangulos.pdf")
 
         # Mostrar resumen de datos extraídos
-        print(f"\n=== RESUMEN ===")
-        print(
+        logging.info(f"\n=== RESUMEN ===")
+        logging.info(
             f"Código de evaluación: {page1_data.get('codigo_evaluacion', 'N/A')}")
-        print(f"Región: {page1_data.get('region', 'N/A')}")
-        print(f"Comuna: {page1_data.get('comuna', 'N/A')}")
-        print(f"Tipo de vivienda: {page1_data.get('tipo_vivienda', 'N/A')}")
-        print(
+        logging.info(f"Región: {page1_data.get('region', 'N/A')}")
+        logging.info(f"Comuna: {page1_data.get('comuna', 'N/A')}")
+        logging.info(f"Tipo de vivienda: {page1_data.get('tipo_vivienda', 'N/A')}")
+        logging.info(
             f"Superficie útil: {page1_data.get('superficie_interior_util_m2', 'N/A')} m²")
-        print(
+        logging.info(
             f"Porcentaje de ahorro: {page1_data.get('porcentaje_ahorro', 'N/A')}%")
-        print(
+        logging.info(
             f"Letra eficiencia: {page1_data.get('letra_eficiencia_energetica_dem', 'N/A')}")
 
         pdf_doc.close()
-        print("\nProcesamiento completado exitosamente!")
+        logging.info("\nProcesamiento completado exitosamente!")
 
     except Exception as e:
-        print(f"Error en el ejemplo: {e}")
+        logging.error(f"Error en el ejemplo: {e}")
         logging.error(f"Error in example_usage_complete: {e}", exc_info=True)

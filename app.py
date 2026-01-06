@@ -8,8 +8,17 @@ import time
 import re  # Import regex for sanitizing sheet names
 import os  # Import os to check for sample file existence
 
-# Import using wildcard as requested
-from scraping_functions import *
+# Import specific functions from scraping_functions module
+from scraping_functions import (
+    get_informe_cev_v2_pagina1_as_dataframe,
+    get_informe_cev_v2_pagina2_as_dataframe,
+    get_informe_cev_v2_pagina3_consumos_as_dataframe,
+    get_informe_cev_v2_pagina3_envolvente_as_dataframe,
+    get_informe_cev_v2_pagina4_as_dataframe,
+    get_informe_cev_v2_pagina5_as_dataframe,
+    get_informe_cev_v2_pagina6_as_dataframe,
+    get_informe_cev_v2_pagina7_as_dataframe,
+)
 
 # Configure logging for the app
 logging.basicConfig(level=logging.INFO,
@@ -112,13 +121,24 @@ def display_dataframe_with_title(title: str, data: pd.DataFrame, transpose: bool
 
     if transpose:
         display_data = data_to_display.T
-        display_data.columns = [""]
+        if len(display_data.columns) == 1:
+            display_data.columns = ["Valor"]
+        else:
+            display_data.columns = [f"Valor {i+1}" for i in range(len(display_data.columns))]
     else:
         display_data = data_to_display
 
-    dynamic_column_config = {col: st.column_config.Column(
-        width=None) for col in display_data.columns}
-    st.dataframe(display_data, column_config=dynamic_column_config)
+    # Ensure index and columns are strings to avoid Arrow serialization errors
+    display_data.index = display_data.index.map(str)
+    display_data.columns = display_data.columns.map(str)
+
+    # Convert object columns to string to avoid Arrow serialization errors (mixed types)
+    for col in display_data.columns:
+        if display_data[col].dtype == 'object':
+            display_data[col] = display_data[col].map(lambda x: "" if pd.isna(x) else str(x))
+
+    # Use container width for better UI
+    st.dataframe(display_data, use_container_width=True)
 
 
 # --- PDF Processing ---
@@ -144,7 +164,7 @@ def process_pdf(pdf_document: fitz.Document, filename: str) -> Tuple[List[pd.Dat
         status_text.text(f"Procesando: {base_name}...")
         try:
             df = func(pdf_document)
-            print(df)
+            logging.debug(f"Extracted DataFrame for {base_name}:\n{df}")
             extracted_data_frames.append(df)
             base_names.append(base_name)
             logging.info(f"Processed {base_name}")
