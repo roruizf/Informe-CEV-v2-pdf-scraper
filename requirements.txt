@@ -5,3 +5,8 @@ openpyxl==3.0.9
 pytesseract==0.3.10
 opencv-python-headless==4.7.0.68
 numpy==1.24.4
+
+# Dev Dependencies
+pytest==7.4.4
+pytest-cov==5.0.0
+coverage==7.6.1

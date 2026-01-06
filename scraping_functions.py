@@ -542,7 +542,21 @@ def _parse_hourly_temps_from_text_to_dict(raw_text: str, month_name: str) -> Dic
 
 
 def safe_float_convert(text: Optional[str], default: Any = None) -> Union[float, None]:
-    """Safely converts a string to a float, handling potential errors and None input."""
+    """
+    Safely converts a string to a float, handling different locale conventions.
+    
+    Supports:
+    - Spanish/European format: 1.234,56
+    - US/Standard format: 1,234.56
+    - Mixed multi-line OCR output (tries to find a valid number line by line).
+    
+    Args:
+        text: The string to convert.
+        default: Value to return if conversion fails.
+        
+    Returns:
+        Converted float or the default value.
+    """
     if text is None or text == '':
         return default
 
@@ -553,9 +567,34 @@ def safe_float_convert(text: Optional[str], default: Any = None) -> Union[float,
 
     for line in lines:
         try:
-            # Remove decimals (thousands separator in Spanish) and replace comma with dot
-            cleaned_text = line.replace('.', '').replace(',', '.').strip()
-            return float(cleaned_text)
+            # Basic cleaning
+            cleaned = line.strip()
+            
+            # If both , and . exist (e.g. 1.234,56 or 1,234.56)
+            if ',' in cleaned and '.' in cleaned:
+                if cleaned.find('.') < cleaned.find(','): # 1.234,56
+                    cleaned = cleaned.replace('.', '').replace(',', '.')
+                else: # 1,234.56
+                    cleaned = cleaned.replace(',', '')
+            # If only comma exists (e.g. 1234,56)
+            elif ',' in cleaned:
+                cleaned = cleaned.replace(',', '.')
+            # If only dot exists (e.g. 1.234 or 1234.56)
+            elif '.' in cleaned:
+                parts = cleaned.split('.')
+                # If there's exactly one dot and it's not followed by exactly 3 digits (e.g. 75.5)
+                # it's likely a decimal dot.
+                if len(parts) == 2 and len(parts[1]) != 3:
+                    pass # Keep the dot as decimal separator
+                # If there are multiple dots OR one dot followed by 3 digits (e.g. 1.000 or 1.000.000)
+                # verify that all parts after the first have length 3 (thousand separator pattern)
+                elif all(len(p) == 3 for p in parts[1:]):
+                    cleaned = cleaned.replace('.', '') # Treat as thousands separator
+                else:
+                    # Invalid or ambiguous dot usage
+                    raise ValueError(f"Ambiguous or invalid numeric format: {cleaned}")
+
+            return float(cleaned)
         except (ValueError, TypeError):
             continue
 
@@ -593,33 +632,41 @@ def _from_procentaje_ahorro_to_letra(porcentaje_ahorro_decimal: Optional[float])
 
 def separar_string(texto):
     """
-    Separa un string usando múltiples delimitadores preservando el orden original
+    Separa un string por espacios, saltos de línea o pestañas si no es un número.
     """
-    delimitadores = r"[{}\[\]/\n|(),']"
-    elementos = re.split(delimitadores, texto)
+    elementos = re.split(r'[\s\n\t]+', texto)
     return [elem.strip() for elem in elementos if elem.strip()]
 
 
 def extraer_numeros_de_texto(texto):
     """
-    Extrae todos los números (enteros y decimales) de un string
+    Extrae todos los números (enteros y decimales) de un string,
+    manejando comas y puntos.
     """
-    # Patrón para encontrar números (enteros y decimales)
-    patron = r'\d+\.?\d*'
+    # Patrón para encontrar números (considerando comas y puntos como separadores)
+    patron = r'\d+(?:[.,]\d+)*'
     numeros = re.findall(patron, texto)
 
-    # Convertir a string sin puntos
-    numeros_sin_puntos = []
+    # Limpiar cada número encontrado
+    resultados = []
     for num in numeros:
-        # Verificar que realmente sea un número válido
+        # Usar la misma lógica de safe_float_convert para normalizar
+        normalizado = num.replace('.', '') if '.' in num and (len(num.split('.')[-1]) == 3) else num
+        normalizado = normalizado.replace(',', '.') if ',' in normalizado else normalizado
+        # Eliminar cualquier punto restante que no sea decimal
+        if normalizado.count('.') > 1:
+             normalizado = normalizado.replace('.', '', normalizado.count('.') - 1)
+        
+        # Limpieza final para asegurar que sea un string numérico puro para la lógica posterior del scraper
         try:
-            float(num)
-            num_sin_punto = num.replace('.', '')
-            numeros_sin_puntos.append(num_sin_punto)
+            float(normalizado)
+            # El scraper espera strings sin puntos si son enteros, o con punto decimal
+            final = normalizado.replace('.', '') if '.' in normalizado and float(normalizado).is_integer() else normalizado
+            resultados.append(final)
         except ValueError:
             continue
 
-    return numeros_sin_puntos
+    return resultados
 
 
 def procesar_lista_completa(lista_strings):
@@ -714,19 +761,7 @@ def extraer_numeros_de_elemento(elemento):
     """
     Extrae números individuales de un elemento (función auxiliar)
     """
-    patron = r'\d+\.?\d*'
-    numeros = re.findall(patron, elemento)
-
-    numeros_validos = []
-    for num in numeros:
-        try:
-            float(num)
-            num_sin_punto = num.replace('.', '')
-            numeros_validos.append(num_sin_punto)
-        except ValueError:
-            continue
-
-    return numeros_validos
+    return extraer_numeros_de_texto(elemento)
 
 
 def convertir_y_dividir(lista_digitos):
@@ -821,7 +856,10 @@ def get_informe_cev_v2_pagina1_as_dataframe(pdf_report: fitz.Document) -> pd.Dat
     if not data_dict:
         return pd.DataFrame()
     try:
-        return pd.DataFrame.from_dict(data_dict, orient='index').T
+        df = pd.DataFrame.from_dict(data_dict, orient='index').T
+        if "codigo_evaluacion" in df.columns:
+            df = df.drop(columns=["codigo_evaluacion"])
+        return df
     except Exception as e:
         logging.error(
             f"Failed to convert page 1 dict to DataFrame: {e}", exc_info=True)
@@ -933,7 +971,10 @@ def get_informe_cev_v2_pagina2_as_dataframe(pdf_report: fitz.Document) -> pd.Dat
     if not data_dict:
         return pd.DataFrame()
     try:
-        return pd.DataFrame.from_dict(data_dict, orient='index').T
+        df = pd.DataFrame.from_dict(data_dict, orient='index').T
+        if "codigo_evaluacion" in df.columns:
+            df = df.drop(columns=["codigo_evaluacion"])
+        return df
     except Exception as e:
         logging.error(
             f"Failed to convert page 2 dict to DataFrame: {e}", exc_info=True)
@@ -1043,7 +1084,10 @@ def get_informe_cev_v2_pagina3_consumos_as_dataframe(pdf_report: fitz.Document) 
     if not data_dict:
         return pd.DataFrame()
     try:
-        return pd.DataFrame.from_dict(data_dict, orient='index').T
+        df = pd.DataFrame.from_dict(data_dict, orient='index').T
+        if "codigo_evaluacion" in df.columns:
+            df = df.drop(columns=["codigo_evaluacion"])
+        return df
     except Exception as e:
         logging.error(
             f"Failed to convert page 3 consumos dict to DataFrame: {e}", exc_info=True)
@@ -1594,7 +1638,12 @@ def get_informe_cev_v2_pagina6_as_dataframe(pdf_report: fitz.Document) -> pd.Dat
 def get_informe_cev_v2_pagina7_as_dict(pdf_report: fitz.Document) -> Dict[str, Any]:
     """
     Extract data from page 7 of an informe_CEV_v2 PDF report and return it as a dictionary.
-    Uses get_page_coordinates for consistency.
+
+    Args:
+        pdf_report (fitz.Document): The PyMuPDF document object.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing field names as keys and extracted text/data as values.
     """
     result: Dict[str, Any] = {}
     try:
@@ -1630,13 +1679,21 @@ def get_informe_cev_v2_pagina7_as_dict(pdf_report: fitz.Document) -> Dict[str, A
 def get_informe_cev_v2_pagina7_as_dataframe(pdf_report: fitz.Document) -> pd.DataFrame:
     """
     Extract evaluation details from page 7 into a Pandas DataFrame.
-    Uses get_page_coordinates for consistency.
+
+    Args:
+        pdf_report (fitz.Document): The PyMuPDF document object.
+
+    Returns:
+        pd.DataFrame: A one-row DataFrame containing the extracted fields.
     """
     data_dict = get_informe_cev_v2_pagina7_as_dict(pdf_report)
     if not data_dict:
         return pd.DataFrame()
     try:
-        return pd.DataFrame.from_dict(data_dict, orient='index').T
+        df = pd.DataFrame.from_dict(data_dict, orient='index').T
+        if "codigo_evaluacion" in df.columns:
+            df = df.drop(columns=["codigo_evaluacion"])
+        return df
     except Exception as e:
         logging.error(
             f"Failed to convert page 7 dict to DataFrame: {e}", exc_info=True)

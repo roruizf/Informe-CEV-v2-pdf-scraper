@@ -45,7 +45,25 @@ Para ejecutar esta aplicación, necesitarás tener Python 3 instalado, junto con
 6.  Una vez procesado, navega por las pestañas "Página 1" a "Página 7" para ver los datos extraídos.
 7.  Si el procesamiento fue exitoso, aparecerá un botón "Descargar Informe CEV (Excel)" debajo del título principal para descargar el archivo `.xlsx` con todos los datos.
 
+### Calidad y Pruebas
+
+El proyecto cuenta con una suite de pruebas automatizadas que validan la lógica de extracción y las funciones auxiliares.
+
+#### Ejecutar pruebas localmente
+1. Asegúrate de tener instaladas las dependencias de desarrollo:
+   ```bash
+   pip install pytest pytest-cov
+   ```
+2. Ejecuta los tests desde la raíz del proyecto:
+   ```bash
+   pytest
+   ```
+
+#### Integración Continua (CI/CD)
+Se ha configurado un workflow de **GitHub Actions** que ejecuta automáticamente todas las pruebas en cada `push` o `pull request` a la rama `main`, asegurando la estabilidad del código.
+
 ## Estructura del Proyecto
+
 
 * `app.py`: Contiene el código de la aplicación web Streamlit, la interfaz de usuario, la lógica de carga/procesamiento y la visualización de datos.
 * `scraping_functions.py`: Contiene las funciones responsables de extraer los datos de las diferentes páginas del PDF utilizando coordenadas específicas.
