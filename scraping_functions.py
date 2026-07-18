@@ -56,7 +56,7 @@ def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, 
             'comuna': (29.2, 33.0, 165.3, 38.2),
             'direccion': (31.3, 39.1, 165.3, 44.3),
             'rol_vivienda_proyecto': (55.5, 45.6, 165.3, 50.8),
-            'tipo_vivienda': (45.9, 51.7, 165.3, 56.9),
+            'tipo_vivienda': (43.7, 51.7, 165.3, 56.9),
             'superficie_interior_util_m2': (53.0, 58.3, 70.0, 63.5),
             'porcentaje_ahorro_raw': (5.6, 78.6, 165.8, 191.3),
             'demanda_calefaccion_kwh_m2_ano_raw': (15.6, 220.0, 73.0, 230.0),
@@ -73,8 +73,8 @@ def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, 
             'direccion': (40.4, 58.9, 95.0, 63.1),
             'rol_vivienda': (40.4, 64.6, 95.0, 68.9),
             'tipo_vivienda': (40.4, 70.2, 95.0, 74.4),
-            'zona_termica': (143.1, 47.5, 151.0, 51.7),
-            'superficie_interior_util_m2_raw': (143.1, 53.3, 151.0, 57.5),
+            'zona_termica': (143.1, 47.5, 154.0, 51.7),
+            'superficie_interior_util_m2_raw': (143.1, 53.3, 154.0, 57.5),
             'solicitado_por': (143.1, 58.9, 210.5, 63.1),
             'evaluado_por': (143.1, 64.7, 210.5, 68.9),
             'codigo_evaluacion': (143.1, 70.2, 163.0, 74.5),
@@ -203,26 +203,16 @@ def get_page_coordinates(page_num: int) -> Dict[str, Tuple[float, float, float, 
         return coordinates
 
     elif page_num == 4:
-        coordinates = {
+        return {
             'codigo_evaluacion': (62.3, 30.7, 88.1, 36.0),
-            # Coordenadas para columna completa de Enero (ajustar según PDF real)
-            # x1, y1, x2, y2 - columna completa
-            'columna_enero': (46.5, 189.7, 62.0, 243.2),
-            # Coordenadas para columna completa de Julio (ajustar según PDF real)
-            # x1, y1, x2, y2 - columna completa
-            'columna_julio': (76.5, 189.7, 92.0, 243.2)
+            'flujos_enero': (44.0, 187.0, 70.0, 246.0),
+            'flujos_julio': (70.0, 187.0, 95.0, 246.0),
         }
-        return coordinates
 
     # Página 6 (índice 5)
     elif page_num == 5:
-        return {
-            'codigo_evaluacion': (62.3, 30.7, 88.1, 36.0),
-            'enero': (64.5, 97.7, 173.2, 103.1),
-            'abril': (64.6, 152.5, 173.8, 157.8),
-            'julio': (66.4, 211.8, 174.0, 217.5),
-            'octubre': (65.8, 271.0, 174.5, 276.4),
-        }
+        from ocr_page6 import BAND_REGIONS
+        return {'codigo_evaluacion': (62.3, 30.7, 88.1, 36.0), **BAND_REGIONS}
 
     # Página 7 (índice 6)
     elif page_num == 6:
@@ -455,28 +445,29 @@ def extract_text_from_area(page: fitz.Page, area: Tuple[float, float, float, flo
 
 def _get_text_from_image_area(page: fitz.Page, crop_box: fitz.Rect) -> str:
     """
-    Extrae texto de un área específica usando OCR.
+    Extrae texto de un área específica usando OCR con pre-procesamiento de imagen.
     """
     try:
-        # 1. Capturar con DPI alto para máxima claridad
-        pix = page.get_pixmap(dpi=600, clip=crop_box)
+        # 1. Capturar con DPI alto
+        pix = page.get_pixmap(dpi=300, clip=crop_box)
         img_data = pix.tobytes("png")
 
-        # Convertir los datos de la imagen a un formato que OpenCV pueda usar
+        # 2. Pre-procesamiento con OpenCV
         np_arr = np.frombuffer(img_data, np.uint8)
         img_cv = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        
+        # Convertir a escala de grises
+        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+        
+        # Binarización de Otsu para limpiar fondo y grillas
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+        # Reducción de ruido (speckle noise)
+        denoised = cv2.medianBlur(thresh, 3)
 
-        # 2. Reducir la imagen a la mitad (50% de su tamaño)
-        # Esto a menudo la devuelve al tamaño "ideal" para Tesseract
-        nueva_altura = int(img_cv.shape[0] * 0.5)
-        nueva_anchura = int(img_cv.shape[1] * 0.5)
-        img_reescalada = cv2.resize(
-            img_cv, (nueva_anchura, nueva_altura), interpolation=cv2.INTER_AREA)
-
-        # 3. Realizar OCR en la imagen reescalada
+        # 3. OCR con configuración optimizada
         custom_config = r'--oem 3 --psm 6'
-        text = pytesseract.image_to_string(
-            img_reescalada, config=custom_config)
+        text = pytesseract.image_to_string(denoised, config=custom_config)
         return text
     except Exception as e:
         logging.error(f"Error durante el OCR en la página {page.number}: {e}")
@@ -1348,9 +1339,10 @@ def get_informe_cev_v2_pagina4_as_dataframe(pdf_report: fitz.Document) -> pd.Dat
 
 def get_informe_cev_v2_pagina5_as_dict(pdf_report: fitz.Document) -> Dict[str, Any]:
     """
-    Extract data from page 5 of an informe_CEV_v2 PDF report and return it as a dictionary.
-    Page 5 contains a transposed table with data for January and July across 10 energy parameters.
-    Uses column-based extraction with specific logic for 19-value pattern.
+    Extract page 5 (energy flows Q) from displayed-size numeric text spans inside
+    the table region (x 44-95 / y 187-246 mm; Enero/Julio split at x=70, rows
+    ordered by y). Robust to line-spacing changes; no fixed per-cell boxes.
+    Returns the same {col: [enero, julio]} structure for two rows.
     """
     data_list: Dict[str, List[Any]] = {}
     try:
@@ -1360,106 +1352,45 @@ def get_informe_cev_v2_pagina5_as_dict(pdf_report: fitz.Document) -> Dict[str, A
             raise ValueError("PDF has less than 5 pages.")
 
         page = pdf_report[4]
-
-        # Usar get_page_coordinates para obtener las coordenadas
         COORDINATES = get_page_coordinates(4)
-
         if not COORDINATES:
             logging.warning("No coordinates defined for page 5")
             return {}
 
-        # Extraer texto de columnas completas
         codigo_evaluacion = extract_text_from_area(
             page, COORDINATES['codigo_evaluacion']).strip()
-        columna_enero_text = extract_text_from_area(
-            page, COORDINATES['columna_enero'])
-        columna_julio_text = extract_text_from_area(
-            page, COORDINATES['columna_julio'])
 
-        # Función para procesar una línea y convertir a float
-        def convert_line_to_float(line: str) -> Optional[float]:
-            """Convierte una línea de texto a float, manejando casos especiales."""
-            if not line or line.strip() == '':
-                return None
+        REPORT_W, REPORT_H = 215.9, 330.0
+        pr = page.rect
+        x_split_mm, y_lo, y_hi = 70.0, 187.0, 246.0
+        num_re = re.compile(r'^-?\d+(?:,\d+)?$|^-$')
 
-            cleaned_line = line.strip().replace(',', '.')
+        enero, julio = [], []
+        for blk in page.get_text("dict").get("blocks", []):
+            for line in blk.get("lines", []):
+                for span in line.get("spans", []):
+                    txt = span["text"].strip()
+                    if not num_re.match(txt) or span["size"] < 9.0:
+                        continue
+                    mx = span["bbox"][0] / pr.width * REPORT_W
+                    my = span["bbox"][1] / pr.height * REPORT_H
+                    if not (y_lo < my < y_hi and 44 < mx < 95):
+                        continue
+                    val = 0.0 if txt == '-' else safe_float_convert(txt)
+                    (enero if mx < x_split_mm else julio).append((my, val))
 
-            # Casos especiales
-            if cleaned_line in ['-', '-0']:
-                return 0.0
+        enero = [v for _, v in sorted(enero)]
+        julio = [v for _, v in sorted(julio)]
+        enero = (enero + [None] * 10)[:10]
+        julio = (julio + [None] * 10)[:10]
 
-            try:
-                return float(cleaned_line)
-            except ValueError:
-                return None
+        params = ['q_recuperado', 'q_puentes_termicos', 'q_contra_terreno', 'q_piso_ventilado',
+                  'q_ventanas', 'q_muros', 'q_techo', 'q_infiltraciones', 'q_ventilacion', 'q_sol']
 
-        # Función para procesar una columna completa según el patrón identificado
-        def process_column_data(column_text: str, is_enero: bool = False) -> List[Optional[float]]:
-            """
-            Procesa el texto de una columna completa según el patrón de 19 valores.
-
-            Para Julio: tomar los últimos 10 valores
-            Para Enero: tomar los últimos 10 valores, luego intercambiar penúltimo con antepenúltimo
-            """
-            if not column_text or column_text.strip() == '':
-                return [None] * 10
-
-            # Dividir por líneas y limpiar
-            lines = [line.strip()
-                     for line in column_text.splitlines() if line.strip()]
-
-            # Convertir todas las líneas a float
-            all_values = []
-            for line in lines:
-                value = convert_line_to_float(line)
-                all_values.append(value)
-
-            # Verificar que tenemos 19 valores (o al menos 10)
-            if len(all_values) < 10:
-                logging.warning(
-                    f"Expected at least 10 values, got {len(all_values)}")
-                # Rellenar con None si faltan valores
-                while len(all_values) < 10:
-                    all_values.append(None)
-
-            # Tomar los últimos 10 valores
-            last_10_values = all_values[-10:] if len(all_values) >= 10 else all_values + [
-                None] * (10 - len(all_values))
-
-            # Para enero: intercambiar penúltimo (índice -2) con antepenúltimo (índice -3)
-            if is_enero and len(last_10_values) >= 3:
-                # Intercambiar posiciones: penúltimo ↔ antepenúltimo
-                last_10_values[-2], last_10_values[-3] = last_10_values[-3], last_10_values[-2]
-
-            return last_10_values
-
-        # Procesar columnas
-        valores_enero = process_column_data(columna_enero_text, is_enero=True)
-        valores_julio = process_column_data(columna_julio_text, is_enero=False)
-
-        # Lista de parámetros energéticos en el orden esperado
-        field_names = [
-            'q_recuperado_kwh',
-            'q_puentes_termicos_kwh',
-            'q_contra_terreno_kwh',
-            'q_piso_ventilado_kwh',
-            'q_ventanas_kwh',
-            'q_muros_kwh',
-            'q_techo_kwh',
-            'q_infiltraciones_kwh',
-            'q_ventilacion_kwh',
-            'q_sol_kwh'
-        ]
-
-        # Preparar estructura de datos para DataFrame (2 filas: Enero y Julio)
         data_list['codigo_evaluacion'] = [codigo_evaluacion, codigo_evaluacion]
         data_list['mes'] = ['Enero', 'Julio']
-
-        # Asignar valores a cada parámetro energético
-        for i, field_name in enumerate(field_names):
-            enero_val = valores_enero[i] if i < len(valores_enero) else None
-            julio_val = valores_julio[i] if i < len(valores_julio) else None
-            data_list[field_name] = [enero_val, julio_val]
+        for i, p in enumerate(params):
+            data_list[f'{p}_kwh'] = [enero[i], julio[i]]
 
         return data_list
 
@@ -1504,83 +1435,62 @@ def get_informe_cev_v2_pagina5_as_dataframe(pdf_report: fitz.Document) -> pd.Dat
 
 def get_informe_cev_v2_pagina6_as_dict(pdf_report: fitz.Document) -> Dict[str, Any]:
     """
-    Extract data from page 6 of an informe_CEV_v2 PDF report and return it as a dictionary.
-    Page 6 contains hourly temperature data for 4 months extracted using OCR.
-    Uses get_page_coordinates for consistency.
+    Extract data from page 6 (hourly temperatures) using template-matching OCR.
+    Returns dict with t_ext/t_int/t_conf per month + confidence columns + n_profiles.
     """
     data_list: Dict[str, List[Any]] = {}
     try:
+        from ocr_page6 import extract_page6_from_doc, MONTHS
+
         if not isinstance(pdf_report, fitz.Document):
             raise TypeError("Input must be a fitz.Document object.")
         if len(pdf_report) < 6:
             raise ValueError("PDF has less than 6 pages.")
 
-        page = pdf_report[5]
+        codigo_evaluacion = extract_text_from_area(
+            pdf_report[5], get_page_coordinates(5)['codigo_evaluacion']).strip()
 
-        # Usar get_page_coordinates para obtener las coordenadas
-        COORDINATES = get_page_coordinates(5)
-
-        if not COORDINATES:
-            logging.warning("No coordinates defined for page 6")
+        ocr_result = extract_page6_from_doc(pdf_report)
+        if not ocr_result:
+            logging.warning("Page 6 OCR returned no data")
             return {}
 
-        # Extraer código de evaluación usando método estándar
-        codigo_evaluacion = extract_text_from_area(
-            page, COORDINATES['codigo_evaluacion']).strip()
-
-        # Meses a procesar
-        meses = ['enero', 'abril', 'julio', 'octubre']
-
-        # Inicializar estructura de datos
         data_list['codigo_evaluacion'] = [codigo_evaluacion] * 24
-        data_list['hora'] = list(range(1, 25))  # Horas 1 a 24
+        data_list['hora'] = list(range(1, 25))
 
-        # Procesar cada mes
-        for mes in meses:
-            if mes in COORDINATES:
-                # Convertir coordenadas a fitz.Rect para OCR
-                x1, y1, x2, y2 = COORDINATES[mes]
+        for mes in MONTHS:
+            band = ocr_result.get(mes, {})
+            if band.get('bad_grid'):
+                logging.warning(f"Page 6 {mes}: bad grid detection")
 
-                # Normalizar coordenadas usando la misma lógica que extract_text_from_area
-                REPORT_WIDTH = 215.9  # mm
-                REPORT_HEIGHT = 330.0  # mm
+            ext = band.get('exterior', [None] * 24)
+            int_ = band.get('interior', [None] * 24)
+            conf_ = band.get('confort', [None] * 24)
+            c_ext = band.get('conf_ext', [-1.0] * 24)
+            c_int = band.get('conf_int', [-1.0] * 24)
+            c_conf = band.get('conf_conf', [-1.0] * 24)
+            n_prof = band.get('n_profiles', 2)
 
-                page_rect = page.rect
-                page_width = page_rect.width
-                page_height = page_rect.height
+            def pad(lst, n=24):
+                return (lst + [None] * n)[:n]
 
-                # Normalizar coordenadas
-                rx1, ry1 = normalize_coordinates(
-                    x1, y1, REPORT_WIDTH, REPORT_HEIGHT, page_width, page_height)
-                rx2, ry2 = normalize_coordinates(
-                    x2, y2, REPORT_WIDTH, REPORT_HEIGHT, page_width, page_height)
+            def pad_conf(lst, n=24):
+                return (lst + [-1.0] * n)[:n]
 
-                crop_box = fitz.Rect(rx1, ry1, rx2, ry2)
+            data_list[f't_ext_{mes}'] = pad(ext)
+            data_list[f't_int_{mes}'] = pad(int_)
+            data_list[f't_conf_{mes}'] = pad(conf_)
+            data_list[f'conf_ext_{mes}'] = pad_conf(c_ext)
+            data_list[f'conf_int_{mes}'] = pad_conf(c_int)
+            data_list[f'conf_conf_{mes}'] = pad_conf(c_conf)
+            data_list[f'n_profiles_{mes}'] = [n_prof] * 24
 
-                # Extraer texto usando OCR
-                raw_text = _get_text_from_image_area(page, crop_box)
+            n_ext = sum(1 for v in ext if v is not None)
+            n_int = sum(1 for v in int_ if v is not None)
+            logging.info(f"Page 6 {mes}: {n_ext} ext, {n_int} int ({n_prof} perfiles)")
 
-                # Procesar texto y obtener temperaturas
-                temp_data = _parse_hourly_temps_from_text_to_dict(
-                    raw_text, mes)
-
-                # Agregar datos al diccionario principal
-                data_list[f't_ext_{mes}'] = temp_data[f't_ext_{mes}']
-                data_list[f't_int_{mes}'] = temp_data[f't_int_{mes}']
-
-                logging.info(
-                    f"Procesado {mes}: {len(temp_data[f't_ext_{mes}'])} valores exteriores, {len(temp_data[f't_int_{mes}'])} valores interiores")
-            else:
-                # Si no hay coordenadas para el mes, rellenar con None
-                data_list[f't_ext_{mes}'] = [None] * 24
-                data_list[f't_int_{mes}'] = [None] * 24
-                logging.warning(f"No se encontraron coordenadas para {mes}")
-
-        # Validar que todas las listas tengan 24 elementos
         for key, lst in data_list.items():
             if len(lst) != 24:
-                logging.warning(
-                    f"Length mismatch for {key} (Page 6): expected 24, got {len(lst)}. Padding/truncating.")
                 if len(lst) < 24:
                     lst.extend([None] * (24 - len(lst)))
                 else:
@@ -1596,32 +1506,28 @@ def get_informe_cev_v2_pagina6_as_dict(pdf_report: fitz.Document) -> Dict[str, A
 def get_informe_cev_v2_pagina6_as_dataframe(pdf_report: fitz.Document) -> pd.DataFrame:
     """
     Extract hourly temperature data from page 6 into a Pandas DataFrame.
-    Returns a DataFrame with 24 rows (hours) and temperature columns for 4 months.
-    Uses get_page_coordinates for consistency.
+    Returns a DataFrame with 24 rows including confort temps + OCR confidence scores.
     """
     data_dict_of_lists = get_informe_cev_v2_pagina6_as_dict(pdf_report)
     if not data_dict_of_lists:
         return pd.DataFrame()
     try:
-        # Crear DataFrame directamente desde el diccionario de listas
         df = pd.DataFrame(data_dict_of_lists)
 
-        # Eliminar columna duplicada de codigo_evaluacion si existe
         if "codigo_evaluacion" in df.columns:
             df = df.drop(columns=["codigo_evaluacion"])
 
-        # Reordenar columnas: hora primero, luego las temperaturas por mes
         if 'hora' in df.columns:
             temp_cols = [col for col in df.columns if col != 'hora']
-            # Ordenar columnas de temperatura por mes
-            ordered_temp_cols = []
+            ordered = []
             for mes in ['enero', 'abril', 'julio', 'octubre']:
-                for temp_type in ['t_ext', 't_int']:
-                    col_name = f'{temp_type}_{mes}'
-                    if col_name in temp_cols:
-                        ordered_temp_cols.append(col_name)
-
-            df = df[['hora'] + ordered_temp_cols]
+                for col in [f't_ext_{mes}', f't_int_{mes}', f't_conf_{mes}',
+                            f'conf_ext_{mes}', f'conf_int_{mes}', f'conf_conf_{mes}',
+                            f'n_profiles_{mes}']:
+                    if col in temp_cols:
+                        ordered.append(col)
+            remaining = [c for c in temp_cols if c not in ordered]
+            df = df[['hora'] + ordered + remaining]
 
         return df
 

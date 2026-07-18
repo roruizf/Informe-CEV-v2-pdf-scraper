@@ -1,0 +1,78 @@
+/* R2F CEV Scraper - Design System */
+
+:root {
+    --primary-color: #1E3A8A; /* Deep Blue */
+    --secondary-color: #10B981; /* Eco Green */
+    --accent-color: #3B82F6; /* Bright Blue */
+    --background-color: #F8FAFC;
+    --card-bg: rgba(255, 255, 255, 0.8);
+    --text-main: #1E293B;
+}
+
+/* Glassmorphism Effect */
+.stMetric {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: 12px;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(8px);
+}
+
+/* Custom Metric Card Style */
+[data-testid="stMetricValue"] {
+    font-size: 2.2rem !important;
+    font-weight: 700 !important;
+    color: var(--primary-color);
+}
+
+[data-testid="stMetricLabel"] {
+    font-size: 1rem !important;
+    font-weight: 500 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748B;
+}
+
+/* Header Styling */
+h1, h2, h3 {
+    font-family: 'Inter', sans-serif;
+    color: var(--primary-color);
+}
+
+/* Sidebar Styling */
+[data-testid="stSidebar"] {
+    background-color: #f1f5f9;
+}
+
+/* Tab Styling */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 12px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    white-space: pre-wrap;
+    background-color: transparent !important;
+    border-radius: 8px 8px 0 0;
+    padding: 0 16px;
+    font-weight: 600;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #E2E8F0 !important;
+    color: var(--primary-color) !important;
+    border-bottom: 3px solid var(--primary-color) !important;
+}
+
+/* Dataframe Styling */
+[data-testid="stDataFrame"] {
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Tooltip/Caption */
+.stCaption {
+    font-style: italic;
+    color: #475569;
+}
